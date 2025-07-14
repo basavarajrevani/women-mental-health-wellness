@@ -12,13 +12,72 @@ dist
 dist-ssr
 *.local
 
+# Environment variables and secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.development
+.env.production
+.env.test
+
+# API Keys and sensitive configuration
+config/secrets.json
+config/keys.json
+secrets/
+keys/
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Database and storage
+*.db
+*.sqlite
+*.sqlite3
+data/
+storage/
+
+# Temporary and cache files
+.cache/
+.temp/
+.tmp/
+*.tmp
+*.temp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
 *.sln
 *.sw?
+
+# Backup files
+*.bak
+*.backup
+*~
+
+# Security and credentials
+credentials.json
+service-account.json
+firebase-adminsdk-*.json
+google-services.json
+GoogleService-Info.plist
+
+# Build and deployment
+build/
+.vercel
+.netlify
