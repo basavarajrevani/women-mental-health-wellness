@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Mental Health Wellness</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .offline-container {
+            max-width: 500px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .offline-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }
+
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 16px;
+            font-weight: 600;
+        }
+
+        p {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+
+        .features {
+            text-align: left;
+            margin: 30px 0;
+        }
+
+        .features h3 {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .feature-list li {
+            padding: 8px 0;
+            padding-left: 30px;
+            position: relative;
+            font-size: 0.95rem;
+        }
+
+        .feature-list li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #4ade80;
+            font-weight: bold;
+        }
+
+        .retry-button {
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px;
+        }
+
+        .retry-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            font-size: 0.9rem;
+        }
+
+        .online {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .offline {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        @media (max-width: 480px) {
+            .offline-container {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 1.5rem;
+            }
+            
+            p {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="offline-icon">🌐</div>
+        <h1>You're Offline</h1>
+        <p>Don't worry! Your mental health journey continues even without an internet connection.</p>
+        
+        <div class="features">
+            <h3>Available Offline Features:</h3>
+            <ul class="feature-list">
+                <li>View previously loaded content</li>
+                <li>Access cached mood tracking data</li>
+                <li>Review your progress history</li>
+                <li>Read downloaded resources</li>
+                <li>Use coping strategies</li>
+                <li>Practice mindfulness exercises</li>
+            </ul>
+        </div>
+
+        <button class="retry-button" onclick="checkConnection()">
+            Check Connection
+        </button>
+        
+        <button class="retry-button" onclick="goHome()">
+            Return to App
+        </button>
+
+        <div id="status" class="status offline">
+            <strong>Status:</strong> <span id="connection-status">Offline</span>
+        </div>
+
+        <div style="margin-top: 30px; font-size: 0.85rem; opacity: 0.7;">
+            <p>💡 <strong>Tip:</strong> Your data will automatically sync when you're back online.</p>
+        </div>
+    </div>
+
+    <script>
+        // Check online status
+        function updateConnectionStatus() {
+            const status = document.getElementById('status');
+            const connectionStatus = document.getElementById('connection-status');
+            
+            if (navigator.onLine) {
+                status.className = 'status online';
+                connectionStatus.textContent = 'Online';
+            } else {
+                status.className = 'status offline';
+                connectionStatus.textContent = 'Offline';
+            }
+        }
+
+        // Check connection and try to reload
+        function checkConnection() {
+            updateConnectionStatus();
+            
+            if (navigator.onLine) {
+                // Try to fetch a small resource to verify connection
+                fetch('/manifest.json', { 
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                })
+                .then(() => {
+                    // Connection is working, redirect to home
+                    window.location.href = '/';
+                })
+                .catch(() => {
+                    // Still offline or connection issues
+                    alert('Connection test failed. Please check your internet connection.');
+                });
+            } else {
+                alert('No internet connection detected. Please check your network settings.');
+            }
+        }
+
+        // Go back to the main app (will load from cache)
+        function goHome() {
+            window.location.href = '/';
+        }
+
+        // Listen for online/offline events
+        window.addEventListener('online', () => {
+            updateConnectionStatus();
+            // Show notification that connection is restored
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: rgba(34, 197, 94, 0.9);
+                color: white;
+                padding: 15px 25px;
+                border-radius: 10px;
+                font-weight: 500;
+                z-index: 1000;
+                animation: slideDown 0.3s ease;
+            `;
+            notification.textContent = '🎉 Connection restored! You can now sync your data.';
+            document.body.appendChild(notification);
+            
+            // Auto-redirect after 2 seconds
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 2000);
+        });
+
+        window.addEventListener('offline', updateConnectionStatus);
+
+        // Initial status check
+        updateConnectionStatus();
+
+        // Periodic connection check
+        setInterval(() => {
+            if (navigator.onLine) {
+                fetch('/manifest.json', { 
+                    method: 'HEAD',
+                    cache: 'no-cache'
+                })
+                .then(() => {
+                    if (!document.querySelector('.online')) {
+                        updateConnectionStatus();
+                    }
+                })
+                .catch(() => {
+                    // Connection issues despite navigator.onLine being true
+                });
+            }
+        }, 5000);
+
+        // Add CSS animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideDown {
+                from {
+                    opacity: 0;
+                    transform: translateX(-50%) translateY(-20px);
+                }
+                to {
+                    opacity: 1;
+                    transform: translateX(-50%) translateY(0);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
