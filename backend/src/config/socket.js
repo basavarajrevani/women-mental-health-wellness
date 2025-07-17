@@ -2,18 +2,29 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
 export const setupSocketIO = (io) => {
+  // Add helper methods to io object
+  io.sendToCommunity = (event, data) => {
+    io.to('community').emit(event, data);
+    console.log(`📡 Broadcasting to community: ${event}`, data);
+  };
+
+  io.sendToUser = (userId, event, data) => {
+    io.to(`user_${userId}`).emit(event, data);
+    console.log(`📡 Sending to user ${userId}: ${event}`, data);
+  };
+
   // Middleware for socket authentication
   io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth.token;
-      
+
       if (!token) {
         return next(new Error('Authentication error: No token provided'));
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       const user = await User.findById(decoded.id).select('-password');
-      
+
       if (!user) {
         return next(new Error('Authentication error: User not found'));
       }
@@ -22,18 +33,28 @@ export const setupSocketIO = (io) => {
       socket.user = user;
       next();
     } catch (error) {
+      console.error('Socket authentication error:', error);
       next(new Error('Authentication error: Invalid token'));
     }
   });
 
   io.on('connection', (socket) => {
-    console.log(`👤 User connected: ${socket.user.name} (${socket.userId})`);
+    console.log(`🔌 User connected: ${socket.user.name} (${socket.userId})`);
 
     // Join user to their personal room for notifications
     socket.join(`user_${socket.userId}`);
+    console.log(`👤 User ${socket.userId} joined personal room: user_${socket.userId}`);
 
     // Join community room for real-time updates
     socket.join('community');
+    console.log(`🌐 User ${socket.userId} joined community room`);
+
+    // Send connection confirmation
+    socket.emit('connected', {
+      userId: socket.userId,
+      userName: socket.user.name,
+      message: 'Successfully connected to real-time server'
+    });
 
     // Handle joining specific rooms
     socket.on('join_room', (roomId) => {
@@ -120,18 +141,7 @@ export const setupSocketIO = (io) => {
     });
   });
 
-  // Helper functions for emitting events from routes
-  io.sendToUser = (userId, event, data) => {
-    io.to(`user_${userId}`).emit(event, data);
-  };
 
-  io.sendToCommunity = (event, data) => {
-    io.to('community').emit(event, data);
-  };
-
-  io.sendToRoom = (roomId, event, data) => {
-    io.to(roomId).emit(event, data);
-  };
 
   console.log('🔌 Socket.IO server configured and ready');
 };

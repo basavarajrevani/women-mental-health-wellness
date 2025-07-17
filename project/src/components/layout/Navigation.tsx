@@ -83,15 +83,15 @@ export function Navigation() {
           path="/resources"
           isActive={location.pathname === '/resources'}
         />
-        <NavItem 
-          icon={<Users size={20} />} 
-          label="Community" 
+        <NavItem
+          icon={<Users size={20} />}
+          label="Community"
           path="/community"
           isActive={location.pathname === '/community'}
         />
-        <NavItem 
-          icon={<MessageCircle size={20} />} 
-          label="Support Chat" 
+        <NavItem
+          icon={<MessageCircle size={20} />}
+          label="Support Chat"
           path="/chat"
           isActive={location.pathname === '/chat'}
         />

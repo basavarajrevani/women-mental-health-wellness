@@ -122,6 +122,34 @@ uploads/
 temp/
 public/uploads/
 
+# Test files with credentials
+test-client.js
+test-server.js
+**/test-client.js
+**/test-server.js
+
+# Scripts with hardcoded credentials
+backend/src/scripts/
+**/scripts/create-*.js
+**/scripts/setup-*.js
+**/scripts/migrate-*.js
+**/scripts/test-*.js
+**/scripts/check-*.js
+**/scripts/fix-*.js
+**/scripts/force-*.js
+**/scripts/init-*.js
+
+# Additional security patterns
+*.env.*
+!*.env.example
+config.json
+config.js
+secrets.js
+keys.js
+auth.json
+credentials.yaml
+credentials.yml
+
 # IMPORTANT SECURITY NOTICE:
 # This .gitignore protects sensitive information including:
 # - Database connection strings (MongoDB Atlas credentials)
@@ -129,9 +157,17 @@ public/uploads/
 # - Admin credentials and passwords
 # - SSL certificates and private keys
 # - User uploaded files and temporary data
+# - Test files with hardcoded credentials
 #
 # NEVER commit .env files or any files containing:
 # - Passwords or authentication tokens
 # - Database connection strings
 # - API keys or secrets
 # - SSL certificates or private keys
+# - Hardcoded test credentials
+#
+# BEFORE UPLOADING TO GITHUB:
+# 1. Ensure all .env files are listed here
+# 2. Check for hardcoded credentials in source code
+# 3. Use .env.example files with placeholders
+# 4. Review SECURITY_SETUP.md for complete instructions

@@ -17,14 +17,20 @@ class SocketService {
 
   // Connect to Socket.IO server
   connect(): void {
+    // Disconnect existing connection if any
+    if (this.socket) {
+      this.disconnect();
+    }
+
     const token = localStorage.getItem('wmh_auth_token');
-    
+
     if (!token) {
       console.log('🔌 No auth token found, skipping socket connection');
       return;
     }
 
-    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+    const socketUrl = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5001';
+    console.log('🔌 Connecting to Socket.IO server:', socketUrl);
 
     this.socket = io(socketUrl, {
       auth: {
@@ -35,9 +41,21 @@ class SocketService {
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,
       reconnectionDelay: this.reconnectDelay,
+      forceNew: true, // Force new connection for different users
     });
 
     this.setupEventListeners();
+  }
+
+  // Disconnect from Socket.IO server
+  disconnect(): void {
+    if (this.socket) {
+      console.log('🔌 Disconnecting from Socket.IO server');
+      this.socket.disconnect();
+      this.socket = null;
+      this.isConnected = false;
+      this.eventListeners.clear();
+    }
   }
 
   // Setup default event listeners
@@ -49,9 +67,13 @@ class SocketService {
       this.isConnected = true;
       this.reconnectAttempts = 0;
       this.reconnectDelay = 1000; // Reset delay
-      
+
       // Join community room for real-time updates
       this.joinRoom('community');
+    });
+
+    this.socket.on('connected', (data) => {
+      console.log('✅ Socket connection confirmed:', data);
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -106,15 +128,7 @@ class SocketService {
     });
   }
 
-  // Disconnect from server
-  disconnect(): void {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-      this.isConnected = false;
-      console.log('🔌 Manually disconnected from Socket.IO server');
-    }
-  }
+
 
   // Check if connected
   isSocketConnected(): boolean {

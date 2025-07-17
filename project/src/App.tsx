@@ -17,6 +17,7 @@ import { Dashboard } from './pages/Dashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import Resources from './pages/Resources';
 import Community from './pages/Community';
+import SocketTest from './pages/SocketTest';
 import Chat from './pages/Chat';
 import Progress from './pages/Progress';
 import Partners from './pages/Partners';
@@ -29,12 +30,33 @@ import ContactUs from './pages/ContactUs';
 import Signup from './pages/Signup';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
 
+  console.log('🔒 ProtectedRoute check:', {
+    hasUser: !!user,
+    isLoading,
+    userEmail: user?.email
+  });
+
+  // Show loading while authentication is being checked
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect to login if no user after loading is complete
   if (!user) {
+    console.log('❌ No user found, redirecting to login');
     return <Navigate to="/login" />;
   }
 
+  console.log('✅ User authenticated, allowing access');
   return <>{children}</>;
 }
 
@@ -179,6 +201,14 @@ function AppContent() {
         <ProtectedRoute>
           <DashboardLayout>
             <Community />
+          </DashboardLayout>
+        </ProtectedRoute>
+      } />
+
+      <Route path="/socket-test" element={
+        <ProtectedRoute>
+          <DashboardLayout>
+            <SocketTest />
           </DashboardLayout>
         </ProtectedRoute>
       } />

@@ -62,6 +62,51 @@ export const getPosts = catchAsync(async (req, res, next) => {
       sort = { isPinned: -1, createdAt: -1 };
   }
 
+  // Check if MongoDB is available
+  const mongoose = (await import('mongoose')).default;
+  if (mongoose.connection.readyState !== 1) {
+    console.log('⚠️  MongoDB not available, returning mock posts');
+
+    // Return mock posts for testing
+    const mockPosts = [
+      {
+        _id: '6878ae85bbd43cf983ff6cc5',
+        id: '6878ae85bbd43cf983ff6cc5',
+        content: 'Welcome to the real-time community! This is a test post to verify Socket.IO functionality. Try creating new posts and see them appear in real-time!',
+        category: 'general',
+        tags: ['test', 'welcome', 'realtime'],
+        author: {
+          _id: '6876b161f270b709a4ff566a',
+          id: '6876b161f270b709a4ff566a',
+          name: 'System',
+          profile: { avatar: '🤖' }
+        },
+        likes: [],
+        comments: [],
+        isAnonymous: false,
+        isPinned: true,
+        status: 'published',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        isLikedByUser: false
+      }
+    ];
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        posts: mockPosts,
+        pagination: {
+          current: parseInt(page),
+          pages: 1,
+          total: mockPosts.length,
+          hasNext: false,
+          hasPrev: false
+        },
+      },
+    });
+  }
+
   const posts = await CommunityPost.find(filter)
     .populate('author', 'name profile.avatar')
     .populate('comments.author', 'name profile.avatar')
@@ -149,20 +194,29 @@ export const createPost = catchAsync(async (req, res, next) => {
   // Emit real-time event
   const io = req.app.get('io');
   if (io) {
+    console.log('📡 Broadcasting new post to community:', post._id);
     io.sendToCommunity('post_created', {
       post: {
+        _id: post._id,
         id: post._id,
         content: post.content,
         category: post.category,
+        tags: post.tags || [],
         author: {
           id: post.author._id,
+          _id: post.author._id,
           name: post.isAnonymous ? 'Anonymous' : post.author.name,
-          avatar: post.isAnonymous ? '🎭' : post.author.profile.avatar,
+          avatar: post.isAnonymous ? '🎭' : (post.author.profile?.avatar || '👤'),
         },
         isAnonymous: post.isAnonymous,
+        likes: [],
+        comments: [],
         createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
       },
     });
+  } else {
+    console.log('❌ Socket.IO not available for broadcasting');
   }
 
   res.status(201).json({
@@ -294,11 +348,13 @@ export const toggleLike = catchAsync(async (req, res, next) => {
   // Emit real-time event
   const io = req.app.get('io');
   if (io) {
+    console.log('📡 Broadcasting like update for post:', post._id);
     io.sendToCommunity('post_like_updated', {
       postId: post._id,
       likesCount: post.likes.length,
       isLiked: !isLiked,
       userId: userId,
+      likes: post.likes,
     });
   }
 
@@ -359,18 +415,22 @@ export const addComment = catchAsync(async (req, res, next) => {
   // Emit real-time event
   const io = req.app.get('io');
   if (io) {
+    console.log('📡 Broadcasting comment for post:', post._id);
     io.sendToCommunity('comment_added', {
       postId: post._id,
       comment: {
+        _id: newComment._id,
         id: newComment._id,
         content: newComment.content,
         author: {
           id: newComment.author._id,
+          _id: newComment.author._id,
           name: newComment.isAnonymous ? 'Anonymous' : newComment.author.name,
-          avatar: newComment.isAnonymous ? '🎭' : newComment.author.profile.avatar,
+          avatar: newComment.isAnonymous ? '🎭' : (newComment.author.profile?.avatar || '👤'),
         },
         isAnonymous: newComment.isAnonymous,
         createdAt: newComment.createdAt,
+        likes: [],
       },
     });
   }
@@ -394,5 +454,37 @@ router.put('/posts/:id', validateObjectId('id'), validateCommunityPost, updatePo
 router.delete('/posts/:id', validateObjectId('id'), deletePost);
 router.post('/posts/:id/like', validateObjectId('id'), toggleLike);
 router.post('/posts/:id/comments', validateObjectId('id'), validateComment, addComment);
+
+// Test endpoint for Socket.IO
+router.post('/test-socket', async (req, res) => {
+  try {
+    const io = req.app.get('io');
+    if (io) {
+      console.log('🧪 Testing Socket.IO broadcast');
+      io.sendToCommunity('test_message', {
+        message: 'Socket.IO is working!',
+        timestamp: new Date().toISOString(),
+        userId: req.user.id,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Test message broadcasted to community',
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Socket.IO not available',
+      });
+    }
+  } catch (error) {
+    console.error('❌ Socket.IO test error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Socket.IO test failed',
+      error: error.message,
+    });
+  }
+});
 
 export default router;

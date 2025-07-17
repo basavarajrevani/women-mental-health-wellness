@@ -75,6 +75,13 @@ export const connectDB = async () => {
     console.error('   2. Set MONGODB_URI=mongodb://localhost:27017/wmh_platform');
     console.error('   3. Start MongoDB with: mongod');
 
+    // For development/testing, allow server to continue without MongoDB
+    if (process.env.NODE_ENV === 'development') {
+      console.log('⚠️  DEVELOPMENT MODE: Continuing without MongoDB for Socket.IO testing');
+      console.log('🔌 Socket.IO functionality will still work for real-time features');
+      return;
+    }
+
     process.exit(1);
   }
 };

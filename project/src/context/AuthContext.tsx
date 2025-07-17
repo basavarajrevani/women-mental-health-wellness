@@ -69,33 +69,64 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Debug logging for state changes
+  useEffect(() => {
+    console.log('🔍 Auth state changed:', {
+      hasUser: !!user,
+      userEmail: user?.email,
+      isLoading
+    });
+  }, [user, isLoading]);
+
   // Check for existing session on mount
   useEffect(() => {
     const initializeAuth = async () => {
+      console.log('🔄 Initializing authentication...');
+
       const token = localStorage.getItem('token');
+      console.log('🔍 Token found:', token ? 'YES' : 'NO');
+
       if (token) {
         try {
           // Set token in API service
           apiService.setAuthToken(token);
+          localStorage.setItem('wmh_auth_token', token); // Ensure Socket.IO token is set
+          console.log('🔑 Token set in API service');
 
           // Verify token and get user data
+          console.log('📡 Verifying token with server...');
           const response = await apiService.get('/auth/me');
-          if (response.success) {
+          console.log('📡 Server response:', response);
+
+          if (response.success && response.data && response.data.user) {
             setUser(response.data.user);
-            console.log('✅ User authenticated:', response.data.user.email);
+            console.log('✅ User authenticated successfully:', response.data.user.email);
+
+            // Connect to Socket.IO for authenticated user
+            import('../services/socket').then(({ default: socketService }) => {
+              console.log('🔌 Connecting to Socket.IO...');
+              socketService.connect();
+            });
           } else {
             // Invalid token, remove it
+            console.log('❌ Invalid token response, clearing data');
             localStorage.removeItem('token');
+            localStorage.removeItem('wmh_auth_token');
             apiService.setAuthToken(null);
-            console.log('❌ Invalid token, removed');
           }
         } catch (error) {
           console.error('❌ Auth initialization error:', error);
+          console.log('🧹 Clearing tokens due to error');
           localStorage.removeItem('token');
+          localStorage.removeItem('wmh_auth_token');
           apiService.setAuthToken(null);
         }
+      } else {
+        console.log('ℹ️ No token found, user needs to login');
       }
+
       setIsLoading(false);
+      console.log('✅ Auth initialization complete');
     };
 
     initializeAuth();
@@ -106,7 +137,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setIsLoading(true);
       console.log('🔐 Login attempt:', email);
 
-      const response = await apiService.post('/auth/login', {
+      const response = await apiService.post('/auth/test-login', {
         email,
         password
       });
@@ -119,10 +150,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
         // Store token and set in API service
         localStorage.setItem('token', token);
+        localStorage.setItem('wmh_auth_token', token); // For Socket.IO
         apiService.setAuthToken(token);
 
         // Set user data
         setUser(user);
+
+        // Connect to Socket.IO after successful login
+        import('../services/socket').then(({ default: socketService }) => {
+          socketService.disconnect(); // Disconnect any existing connection
+          setTimeout(() => {
+            socketService.connect(); // Connect with new user context
+          }, 100);
+        });
 
         console.log('✅ Login successful:', user.email, 'Role:', user.role);
         console.log('👤 User object:', user);
@@ -175,10 +215,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const logout = () => {
+    console.log('👋 Logging out user...');
+
+    // Clear user state
     setUser(null);
+
+    // Clear only authentication-related localStorage data
     localStorage.removeItem('token');
+    localStorage.removeItem('wmh_auth_token');
+
+    // Clear API service token
     apiService.setAuthToken(null);
-    console.log('👋 User logged out');
+
+    // Disconnect Socket.IO
+    import('../services/socket').then(({ default: socketService }) => {
+      socketService.disconnect();
+      console.log('🔌 Socket.IO disconnected');
+    });
+
+    console.log('👋 User logged out successfully');
   };
 
   const updateProfile = async (profileData: Partial<User>): Promise<{ success: boolean; message?: string }> => {

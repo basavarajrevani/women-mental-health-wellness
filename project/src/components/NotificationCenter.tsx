@@ -1,12 +1,76 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, X, Check, Heart, MessageCircle, Trophy, Clock, AlertCircle, Settings } from 'lucide-react';
 import { useGlobalContext } from '../contexts/GlobalContext';
+import { useAuth } from '../context/AuthContext';
+import apiService from '../services/api';
+import socketService from '../services/socket';
 
 const NotificationCenter: React.FC = () => {
-  const { notifications = [], unreadCount = 0, markNotificationRead, currentUser } = useGlobalContext();
+  const { addNotification } = useGlobalContext();
+  const { user: authUser } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [filter, setFilter] = useState<'all' | 'unread' | 'achievements' | 'community'>('all');
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Load notifications from backend
+  const loadNotifications = async () => {
+    if (!authUser) return;
+
+    try {
+      setIsLoading(true);
+      const response = await apiService.get(`/users/${authUser.id}/notifications`);
+      if (response.success) {
+        setNotifications(response.data.notifications);
+        setUnreadCount(response.data.unreadCount);
+      }
+    } catch (error) {
+      console.error('❌ Error loading notifications:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Mark notification as read
+  const markNotificationRead = async (notificationId: string) => {
+    try {
+      const response = await apiService.put(`/users/${authUser.id}/notifications/${notificationId}/read`);
+      if (response.success) {
+        setNotifications(prev => prev.map(notif =>
+          notif._id === notificationId ? { ...notif, isRead: true } : notif
+        ));
+        setUnreadCount(prev => Math.max(0, prev - 1));
+      }
+    } catch (error) {
+      console.error('❌ Error marking notification as read:', error);
+    }
+  };
+
+  // Load notifications on component mount and when user changes
+  useEffect(() => {
+    if (authUser) {
+      loadNotifications();
+    }
+  }, [authUser]);
+
+  // Setup real-time notification updates
+  useEffect(() => {
+    if (!authUser) return;
+
+    // Listen for real-time notifications
+    socketService.on('notification_received', (data: any) => {
+      console.log('🔔 New notification received:', data);
+      setNotifications(prev => [data.notification, ...prev]);
+      setUnreadCount(prev => prev + 1);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('notification_received');
+    };
+  }, [authUser]);
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -26,43 +90,31 @@ const NotificationCenter: React.FC = () => {
     return true;
   });
 
-  const markAllAsRead = () => {
-    notifications.forEach(notification => {
-      if (!notification.isRead) {
-        markNotificationRead(notification.id);
+  const markAllAsRead = async () => {
+    if (!authUser) return;
+
+    try {
+      const response = await apiService.put(`/users/${authUser.id}/notifications/mark-all-read`);
+      if (response.success) {
+        setNotifications(prev => prev.map(notif => ({ ...notif, isRead: true })));
+        setUnreadCount(0);
       }
-    });
+    } catch (error) {
+      console.error('❌ Error marking all notifications as read:', error);
+    }
   };
 
-  const clearAllNotifications = () => {
-    // Clear notifications
-    localStorage.removeItem('user_notifications');
+  const clearAllNotifications = async () => {
+    if (!authUser) return;
 
-    // Clear ALL notification-related localStorage keys more aggressively
-    const allKeys = Object.keys(localStorage);
-    const notificationKeys = allKeys.filter(key =>
-      key.includes('notification') ||
-      key.includes('mood') ||
-      key.includes('last_sent') ||
-      key.includes('reminder') ||
-      key.includes('last_mood_track') ||
-      key.includes('breathing') ||
-      key.includes('wellness') ||
-      key.includes('smart_') ||
-      key.includes('timer_') ||
-      key.includes('alert_')
-    );
-    notificationKeys.forEach(key => {
-      localStorage.removeItem(key);
-      console.log('🗑️ Removed notification key:', key);
-    });
-
-    // Clear from state
-    setNotifications([]);
-    console.log('🧹 All notifications and triggers completely cleared');
-
-    // Force refresh to ensure clean state
-    window.location.reload();
+    try {
+      // For now, just mark all as read since there's no clear all endpoint
+      await markAllAsRead();
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (error) {
+      console.error('❌ Error clearing notifications:', error);
+    }
   };
 
   return (
@@ -162,14 +214,14 @@ const NotificationCenter: React.FC = () => {
                   <div className="divide-y divide-gray-100">
                     {filteredNotifications.map((notification) => (
                       <motion.div
-                        key={notification.id}
+                        key={notification._id}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
                           !notification.isRead ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
                         }`}
                         onClick={() => {
-                          markNotificationRead(notification.id);
+                          markNotificationRead(notification._id);
                           if (notification.actionUrl) {
                             // Navigate to action URL
                             window.location.hash = notification.actionUrl;

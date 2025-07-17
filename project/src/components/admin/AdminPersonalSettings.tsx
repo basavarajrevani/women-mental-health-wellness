@@ -57,8 +57,8 @@ export const AdminPersonalSettings: React.FC = () => {
   });
 
   const [adminCredentials, setAdminCredentials] = useState<AdminCredentials>({
-    email: 'basavarajrevani123@gmail.com',
-    password: 'Basu@15032002',
+    email: 'admin@example.com',
+    password: '',
     name: 'Admin'
   });
 

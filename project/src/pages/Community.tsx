@@ -4,7 +4,7 @@ import { Navigation } from '../components/layout/Navigation';
 import NotificationCenter from '../components/NotificationCenter';
 import { useGlobalContext } from '../contexts/GlobalContext';
 import { useAuth } from '../context/AuthContext';
-import apiService, { handleApiError } from '../services/api';
+import apiService from '../services/api';
 import socketService from '../services/socket';
 import {
   MessageCircle,
@@ -37,44 +37,75 @@ import {
 
 const Community: React.FC = () => {
   const {
-    communityPosts,
     formatTimeAgo,
-    addNotification,
-    addCommunityPost,
-    likeCommunityPost,
-    addComment,
-    loadCommunityPosts,
-    isLoading
+    addNotification
   } = useGlobalContext();
 
   const { user: authUser } = useAuth();
 
-  // State declarations first
+  // State declarations
   const [activeTab, setActiveTab] = useState<'feed' | 'groups' | 'events'>('feed');
+  const [communityPosts, setCommunityPosts] = useState<any[]>([]);
   const [supportGroups, setSupportGroups] = useState<any[]>([]);
   const [events, setEvents] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  // Load community posts from backend
+  const loadCommunityPosts = async () => {
+    try {
+      setIsLoading(true);
+      const response = await apiService.get('/community/posts');
+      if (response.success) {
+        setCommunityPosts(response.data.posts);
+      }
+    } catch (error) {
+      console.error('❌ Error loading community posts:', error);
+      addNotification('Failed to load community posts', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load support groups from backend
+  const loadSupportGroups = async () => {
+    try {
+      const response = await apiService.get('/support-groups');
+      if (response.success) {
+        setSupportGroups(response.data.supportGroups);
+      }
+    } catch (error) {
+      console.error('❌ Error loading support groups:', error);
+      addNotification('Failed to load support groups', 'error');
+    }
+  };
+
+  // Load events from backend
+  const loadEvents = async () => {
+    try {
+      const response = await apiService.get('/events');
+      if (response.success) {
+        setEvents(response.data.events);
+      }
+    } catch (error) {
+      console.error('❌ Error loading events:', error);
+      addNotification('Failed to load events', 'error');
+    }
+  };
 
   // Initialize data on first load
   useEffect(() => {
-    const initializeData = () => {
+    const initializeData = async () => {
       console.log('🚀 Initializing Community page data...');
 
       try {
-        // Load data from localStorage
-        const savedSupportGroups = localStorage.getItem('support_groups');
-        const savedEvents = localStorage.getItem('events');
-
-        if (savedSupportGroups) {
-          setSupportGroups(JSON.parse(savedSupportGroups));
-        }
-
-        if (savedEvents) {
-          setEvents(JSON.parse(savedEvents));
-        }
+        await Promise.all([
+          loadCommunityPosts(),
+          loadSupportGroups(),
+          loadEvents()
+        ]);
 
         setIsInitialized(true);
-
         console.log('✅ Community page initialized');
       } catch (error) {
         console.error('❌ Error initializing community data:', error);
@@ -87,28 +118,101 @@ const Community: React.FC = () => {
     }
   }, [isInitialized]);
 
-  // Load data when tab changes
+  // Setup real-time Socket.IO listeners
   useEffect(() => {
-    const loadData = () => {
-      console.log('🔄 Loading data for tab:', activeTab);
+    if (!authUser || !isInitialized) return;
 
-      // Load data from localStorage
-      const savedSupportGroups = localStorage.getItem('support_groups');
-      const savedEvents = localStorage.getItem('events');
+    console.log('🔌 Setting up Socket.IO listeners for community user:', authUser.email);
 
-      if (savedSupportGroups) {
-        setSupportGroups(JSON.parse(savedSupportGroups));
+    // Force reconnect to ensure proper user context
+    socketService.disconnect();
+    setTimeout(() => {
+      socketService.connect();
+    }, 100);
+
+    // Listen for real-time post updates
+    socketService.on('post_created', (data: any) => {
+      console.log('📝 New post received by user', authUser.email, ':', data);
+
+      if (data.post) {
+        setCommunityPosts(prev => {
+          // Check if post already exists to avoid duplicates
+          const exists = prev.find(p => p._id === data.post._id || p.id === data.post.id);
+          if (exists) {
+            console.log('📝 Post already exists, skipping duplicate');
+            return prev;
+          }
+
+          console.log('📝 Adding new post to feed');
+          return [data.post, ...prev];
+        });
+
+        // Show notification if it's not from current user
+        if (data.post.author && data.post.author.id !== authUser.id) {
+          addNotification({
+            type: 'system',
+            title: 'New Post',
+            message: `New post by ${data.post.author.name}`,
+            userId: authUser.id,
+            isRead: false
+          });
+        }
       }
+    });
 
-      if (savedEvents) {
-        setEvents(JSON.parse(savedEvents));
+    socketService.on('post_like_updated', (data: any) => {
+      console.log('👍 Post like updated:', data);
+      setCommunityPosts(prev => prev.map(post =>
+        post.id === data.postId
+          ? { ...post, likes: data.isLiked
+              ? [...post.likes, data.userId]
+              : post.likes.filter((id: string) => id !== data.userId),
+              likesCount: data.likesCount
+            }
+          : post
+      ));
+
+      // Show notification if someone liked current user's post
+      const post = communityPosts.find(p => p.id === data.postId);
+      if (post && post.author.id === authUser.id && data.userId !== authUser.id && data.isLiked) {
+        addNotification({
+          type: 'like',
+          title: 'Post Liked',
+          message: 'Someone liked your post!',
+          userId: authUser.id,
+          isRead: false
+        });
       }
+    });
+
+    socketService.on('comment_added', (data: any) => {
+      console.log('💬 New comment received:', data);
+      setCommunityPosts(prev => prev.map(post =>
+        post.id === data.postId
+          ? { ...post, comments: [...post.comments, data.comment] }
+          : post
+      ));
+
+      // Show notification if someone commented on current user's post
+      const post = communityPosts.find(p => p.id === data.postId);
+      if (post && post.author.id === authUser.id && data.comment.author.id !== authUser.id) {
+        addNotification({
+          type: 'comment',
+          title: 'New Comment',
+          message: `${data.comment.author.name} commented on your post`,
+          userId: authUser.id,
+          isRead: false
+        });
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      socketService.off('post_created');
+      socketService.off('post_like_updated');
+      socketService.off('comment_added');
     };
-
-    if (isInitialized) {
-      loadData();
-    }
-  }, [activeTab, isInitialized]);
+  }, [authUser, isInitialized, addNotification]);
   const [showCreatePost, setShowCreatePost] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'support' | 'achievement' | 'question' | 'general'>('all');
@@ -134,92 +238,98 @@ const Community: React.FC = () => {
     { key: 'general', label: 'General', icon: MessageCircle, color: 'purple' },
   ];
 
-  const handleCreatePost = () => {
+  const handleCreatePost = async () => {
     if (!newPost.content.trim() || !authUser) return;
 
-    // Use authenticated user's information
-    const userId = authUser.id;
-    const username = newPost.isAnonymous ? 'Anonymous' : (authUser.name || authUser.email.split('@')[0]);
-    const userAvatar = newPost.isAnonymous ? '🎭' : '👤'; // Default avatar
+    try {
+      setIsLoading(true);
+      const response = await apiService.post('/community/posts', {
+        content: newPost.content,
+        category: newPost.category,
+        tags: newPost.tags,
+        isAnonymous: newPost.isAnonymous
+      });
 
-    addCommunityPost({
-      userId: userId,
-      username: username,
-      userAvatar: userAvatar,
-      content: newPost.content,
-      category: newPost.category,
-      tags: newPost.tags,
-      likes: [],
-      comments: [],
-      isAnonymous: newPost.isAnonymous,
-      isPinned: false,
-      isReported: false,
-    });
+      if (response.success) {
+        // Post will be added via Socket.IO real-time update
+        setNewPost({ content: '', category: 'general', tags: [], isAnonymous: false });
+        setShowCreatePost(false);
 
-    // Add achievement notification
-    addNotification({
-      userId: userId,
-      type: 'achievement',
-      title: 'Post Created!',
-      message: 'You shared your thoughts with the community. Keep engaging!',
-      isRead: false,
-    });
-
-    setNewPost({ content: '', category: 'general', tags: [], isAnonymous: false });
-    setShowCreatePost(false);
+        addNotification({
+          userId: authUser.id,
+          type: 'achievement',
+          title: 'Post Created!',
+          message: 'You shared your thoughts with the community. Keep engaging!',
+          isRead: false,
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error creating post:', error);
+      addNotification({
+        userId: authUser.id,
+        type: 'system',
+        title: 'Error',
+        message: 'Failed to create post. Please try again.',
+        isRead: false,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleLikePost = (postId: string) => {
+  const handleLikePost = async (postId: string) => {
     if (!authUser) return;
 
-    // Use authenticated user's information
-    const userId = authUser.id;
-    const username = authUser.name || authUser.email.split('@')[0];
+    try {
+      const response = await apiService.post(`/community/posts/${postId}/like`);
 
-    likeCommunityPost(postId, userId);
-
-    const post = communityPosts.find(p => p.id === postId);
-    if (post && post.userId !== userId) {
+      if (response.success) {
+        // Like update will be handled via Socket.IO real-time update
+        console.log('✅ Post like toggled successfully');
+      }
+    } catch (error) {
+      console.error('❌ Error toggling like:', error);
       addNotification({
-        userId: post.userId,
-        type: 'like',
-        title: 'Someone liked your post!',
-        message: `${username} liked your post: "${post.content.substring(0, 50)}..."`,
+        userId: authUser.id,
+        type: 'system',
+        title: 'Error',
+        message: 'Failed to like post. Please try again.',
         isRead: false,
       });
     }
   };
 
-  const handleAddComment = (postId: string) => {
+  const handleAddComment = async (postId: string) => {
     if (!newComment.trim() || !authUser) return;
 
-    // Use authenticated user's information
-    const userId = authUser.id;
-    const username = authUser.name || authUser.email.split('@')[0];
+    try {
+      const response = await apiService.post(`/community/posts/${postId}/comments`, {
+        content: newComment,
+        isAnonymous: false
+      });
 
-    addComment(postId, {
-      content: newComment,
-    });
-
-    const post = communityPosts.find(p => p.id === postId);
-    if (post && post.userId !== userId) {
+      if (response.success) {
+        // Comment will be added via Socket.IO real-time update
+        setNewComment('');
+        console.log('✅ Comment added successfully');
+      }
+    } catch (error) {
+      console.error('❌ Error adding comment:', error);
       addNotification({
-        userId: post.userId,
-        type: 'comment',
-        title: 'New comment on your post!',
-        message: `${username} commented: "${newComment.substring(0, 50)}..."`,
+        userId: authUser.id,
+        type: 'system',
+        title: 'Error',
+        message: 'Failed to add comment. Please try again.',
         isRead: false,
       });
     }
-
-    setNewComment('');
   };
 
   const filteredPosts = communityPosts
     .filter(post => {
       if (selectedCategory !== 'all' && post.category !== selectedCategory) return false;
       if (searchQuery && !post.content.toLowerCase().includes(searchQuery.toLowerCase()) &&
-          !post.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))) return false;
+          !post.tags.some((tag: string) => tag.toLowerCase().includes(searchQuery.toLowerCase()))) return false;
       return true;
     })
     .sort((a, b) => {
@@ -245,25 +355,7 @@ const Community: React.FC = () => {
     return cat?.icon || MessageCircle;
   };
 
-  // Debug function to manually reload data
-  const handleDebugSync = () => {
-    console.log('🔄 Manual debug reload triggered');
 
-    const savedSupportGroups = localStorage.getItem('support_groups');
-    const savedEvents = localStorage.getItem('events');
-
-    if (savedSupportGroups) {
-      const groups = JSON.parse(savedSupportGroups);
-      console.log('🔍 Debug - Support groups:', groups);
-      setSupportGroups(groups);
-    }
-
-    if (savedEvents) {
-      const events = JSON.parse(savedEvents);
-      console.log('🔍 Debug - Events:', events);
-      setEvents(events);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
@@ -272,27 +364,7 @@ const Community: React.FC = () => {
       <main className="lg:ml-64 pt-16 lg:pt-0 p-4 sm:p-6 lg:p-8">
         <div className="max-w-6xl mx-auto">
 
-          {/* Debug Section - Remove in production */}
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-medium text-yellow-800 mb-2">Debug Info</h3>
-            <p className="text-xs text-yellow-700 mb-2">
-              Support Groups: {supportGroups.length} | Events: {events.length}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={handleDebugSync}
-                className="bg-yellow-600 text-white px-3 py-1 rounded text-xs hover:bg-yellow-700"
-              >
-                Refresh Data
-              </button>
-              <button
-                onClick={handleDebugSync}
-                className="bg-blue-600 text-white px-3 py-1 rounded text-xs hover:bg-blue-700"
-              >
-                Reload Data
-              </button>
-            </div>
-          </div>
+
           {/* Header */}
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 lg:gap-0 mb-6 sm:mb-8">
             <div>
@@ -481,7 +553,7 @@ const Community: React.FC = () => {
                           <p className="text-gray-800 leading-relaxed text-sm sm:text-base">{post.content}</p>
                           {post.tags.length > 0 && (
                             <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-2 sm:mt-3">
-                              {post.tags.map((tag, index) => (
+                              {post.tags.map((tag: string, index: number) => (
                                 <span
                                   key={index}
                                   className="text-xs bg-blue-100 text-blue-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full"

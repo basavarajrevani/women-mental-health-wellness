@@ -21,10 +21,36 @@ export const protect = async (req, res, next) => {
     try {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
+
+      // Check if MongoDB is available
+      const mongoose = (await import('mongoose')).default;
+      if (mongoose.connection.readyState !== 1) {
+        console.log('⚠️  MongoDB not available, using mock user from token');
+
+        // Create mock user from JWT token
+        const mockUser = {
+          _id: decoded.id,
+          id: decoded.id,
+          name: decoded.email === 'basu@gmail.com' ? 'Basu' : 'Bassu',
+          email: decoded.email,
+          role: decoded.role || 'user',
+          profile: {
+            avatar: '👤',
+            bio: 'Test user for Socket.IO development'
+          },
+          stats: { postsCount: 0, likesReceived: 0, commentsCount: 0 },
+          status: 'active',
+          isLocked: false,
+          createdAt: new Date()
+        };
+
+        req.user = mockUser;
+        return next();
+      }
+
       // Get user from token
       const user = await User.findById(decoded.id).select('-password');
-      
+
       if (!user) {
         return res.status(401).json({
           success: false,
